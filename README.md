@@ -6,7 +6,7 @@ Benjamin | Thomas
 ---------|----------
 GetFilename | ~~DisplayBoard~~
 ~~ReadFile~~ | EditSquare
-Interact | GetIndex
+Interact | ~~GetIndex~~
 GetCoordinates | Print Possible Values
 SaveGame | Compute Values
 ~~Malloc~~ | 
