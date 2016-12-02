@@ -9,5 +9,5 @@ GetFilename | ~~DisplayBoard~~
 Interact | ~~GetIndex~~
 GetCoordinates | Print Possible Values
 SaveGame | ~~Compute Values~~
-~~Malloc~~ | 
- | DisplayInstructions
+~~Malloc~~ | ~~DisplayInstructions~~
+ | 
