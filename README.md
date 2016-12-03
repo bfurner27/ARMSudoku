@@ -7,7 +7,7 @@ Benjamin | Thomas
 GetFilename | ~~DisplayBoard~~
 ~~ReadFile~~ | ~~EditSquare~~
 Interact | ~~GetIndex~~
-GetCoordinates | Print Possible Values
+GetCoordinates | ~~Print Possible Values~~
 SaveGame | ~~Compute Values~~
 ~~Malloc~~ | ~~DisplayInstructions~~
  | 
