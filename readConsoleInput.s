@@ -9,6 +9,7 @@
 
 // constants
 .set SIZE_BUFFER, 256
+.set SIZE_PROMPT_GET_FILENAME, 32
 
 .data
 .balign 4
@@ -22,6 +23,10 @@ read_console_flag:
 	.word 0 // 0 is no additional characters need to be read, 
 	        // 1 is additional characters need to be read
 
+.balign 4
+prompt_get_filename:
+	.asciz "Please enter the game filename: "
+
 // temp variables to be used for testing
 .balign 4
 read: 
@@ -31,7 +36,7 @@ read:
 .global _start
 _start:
 	ldr  r0, =read
-	bl   read_console_input_to_space
+	bl   func_get_filename
 
 	mov  r2, r0
 	mov  r0, #STDOUT
@@ -43,13 +48,36 @@ _start:
 	svc  #0
 
 
+/*********************************
+* RETURN: r0 - this will utilize the get coordinates function and
+*              will return a number between 0-80 based on the index
+***********************************/
+func_get_coordinates:
+	push {lr}
+	// TODO write this function once it has been integrated better into the overall sudoku project
+
+	pop  {lr}
+
 /*************************
 * r0 - the address of the filename array location
+* note: make sure to store the address before this function is called because there
+* is no guarantee that this function will preserve registers r0 - r3
 *************************/
-get_filename:
+func_get_filename:
 	push {r4, lr}
+
+	mov  r4, r0
+
+	// prompt the user for the
+	mov  r0, #STDOUT
+	ldr  r1, =prompt_get_filename
+	mov  r2, #SIZE_PROMPT_GET_FILENAME
+	mov  r7, #WRITE
+	svc  #0
+
+	// call fin >> filename
+	mov  r0, r4
 	bl  read_console_input_to_space
-	mov r0, r4	// store the getfile command in the console
 	pop  {r4, pc}
 
 

@@ -28,7 +28,7 @@ _start:
 	mov r0, r5
 	bl  deallocate
 
-	mov r0, #24
+	mov r0, #9024
 	bl  malloc
 	mov r5, r0
 

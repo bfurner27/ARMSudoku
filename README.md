@@ -4,13 +4,10 @@ A basic console game written in arm assembly
 
 Benjamin | Thomas
 ---------|----------
-GetFilename | ~~DisplayBoard~~
+~~GetFilename~~ | ~~DisplayBoard~~
 ~~ReadFile~~ | ~~EditSquare~~
 Interact | ~~GetIndex~~
-GetCoordinates | Print Possible Values
-~~SaveGame~~ | Compute Values
-~~Malloc~~ | 
-DisplayInstructions | 
+~~SaveGame~~ | Compute Values 
 GetCoordinates | ~~Print Possible Values~~
-SaveGame | ~~Compute Values~~
+~~SaveGame~~ | ~~Compute Values~~
 ~~Malloc~~ | ~~DisplayInstructions~~
