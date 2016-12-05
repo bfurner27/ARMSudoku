@@ -6,10 +6,21 @@
 .set STDIN, 0
 .set STDOUT, 1
 
+// on open file flags
+.set O_RDONLY, 0
+.set O_WRONLY, 1
+.set O_CREAT, 64
+
+// file permissions
+.set S_IRUSR, 0400
+.set S_IWUSR, 0200
+
 // system calls
 .set EXIT, 1
 .set READ, 3
 .set WRITE, 4
+.set OPEN, 5
+.set CLOSE, 6
 .set BRK, 45
 
 
@@ -17,6 +28,9 @@
 .set SIZE_BUFFER, 256
 .set SIZE_PROMPT_GET_FILENAME, 32
 .set SIZE_BASIC_STR, 256
+.set SUDOKU_BOARD_SIZE, 81
+.set ERROR_MESSAGE_SIZE, 33
+.set ERROR_MESSAGE_CLOSE_SIZE, 33
 
 
 /*============================================
@@ -33,6 +47,41 @@ filename_write_addr:
 .balign 4
 sudoku_board_addr:
 	.word 0
+/*END****/
+
+/*START***********ifstreamData*******************/
+.balign 4
+data:
+	.skip 1
+.balign 4
+fileHandle:
+	.word 0
+.balign 4
+error_message:
+	.asciz "ERROR: Failed to open the file\n"
+.balign 4
+error_message_close:
+	.asciz "ERROR: File could not be closed\n"
+.balign 4
+sudoku_board_temp_read:
+	.skip 6
+/*END****/
+
+
+/*START***********ofstreamData*******************/
+.balign 4
+write_file_handle:
+	.word 0
+.balign 4
+write_error_message:
+	.asciz "ERROR: Failed to open the file\n"
+.balign 4
+write_error_message_close:
+	.asciz "ERROR: File could not be closed\n"
+// needed for the write_sudoku_board_to_work
+.balign
+sudoku_write_temp_write:
+	.skip 6
 /*END****/
 
 /*START***********ReadConsoleInputData*******************/
@@ -82,20 +131,52 @@ heap_start:
 .text
 .global _start
 _start:
+	// r6 - the filename
+	// r7 - the sudoku board
 	ldr   r4, =filename_read_addr
+	ldr   r5, =sudoku_board_addr
+	ldr   r6, =filename_write_addr	// this will only be used temporarily until the address is stored
+
+	// allocate space for the write filename
+	mov   r0, #SIZE_BASIC_STR
+	bl    malloc
+	str   r0, [r6]
 
 	// the start routine
 	mov   r0, #SIZE_BASIC_STR
 	bl    malloc
 	str   r0, [r4]	// store the address of the read_filename
+	mov   r6, r0
 
-	
+	// call the readfile function
+	bl    func_get_filename
 
+	// set aside space for the sudoku board
+	mov   r0, #SUDOKU_BOARD_SIZE
+	bl    malloc
+	str   r0, [r5]
+	mov   r7, r0
+
+	// call the func_read_sudoku_board
+	mov   r0, r6	// pass in the filename
+	mov   r1, r7 	// pass in the sudoku board
+	bl    func_read_sudoku_board
+
+	// display sudoku board goes here
+
+	// display commands goes here
+
+	// this will start the interact process
 	bl    func_interact
 	
 	mov   r7, #EXIT
 	svc   #0
 
+
+/************************************
+*
+*
+***************************************/
 func_interact:
 	push {r4, r5, r6, r7, lr}
 	ldr  r4, =interact_user_command 	// store the command
@@ -147,6 +228,12 @@ func_interact:
   	b   .Linteract_command_input_loop
   .Linteract_quit_game: 
   	// TODO quit the game and save the board to a file
+  	ldr r0, =filename_write_addr
+  	ldr r0, [r0]
+  	bl  func_get_filename	// r0 will have the address of the string
+  	ldr r1, =sudoku_board_addr
+  	ldr r1, [r1]
+  	bl  func_write_sudoku_board_to_file
   	b  .Linteract_end
   .Linteract_default: 
   	// deal with the default case
@@ -191,6 +278,11 @@ func_to_upper:
 
 
 
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$     CONSOLE_INPUT      $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
 /*********************************
 * RETURN: r0 - this will utilize the get coordinates function and
 *              will return a number between 0-80 based on the index
@@ -203,8 +295,7 @@ func_get_coordinates:
 
 /*************************
 * r0 - the address of the filename array location
-* note: make sure to store the address before this function is called because there
-* is no guarantee that this function will preserve registers r0 - r3
+* RETURN r0 - the address to the pointer that was written
 *************************/
 func_get_filename:
 	push {r4, lr}
@@ -221,14 +312,9 @@ func_get_filename:
 	// call fin >> filename
 	mov  r0, r4
 	bl  read_console_input_to_space
+	mov  r0, r4
 	pop  {r4, pc}
 
-
-/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-$$$$$$$$$$$$$$$$$$$$$$     CONSOLE_INPUT      $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
 /***********
 * PARAM: r0 - location of character array to populate
 * RETURN: r0 - size of the array returned
@@ -301,6 +387,300 @@ read_console_fill_buffer:
 	svc  #0
 
 	pop  {r7, pc}
+
+
+
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    OFSTREAM      $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
+/******************************************************************
+* PARAMS: r0 - the filename to be read to
+* 	  r1 - the sudoku board to be written - a character array
+*******************************************************************/
+func_write_sudoku_board_to_file:
+	push {r4, r5, r6, r7, lr}	// I am using the higher registers because
+					// the system calls are not guaranteed to keep the
+					// other registers the same
+
+	mov  r4, r1 	// save the address of the sudoku board
+
+	// open the filename, the filename was passed in as the r0 parameter
+	bl  write_file_open
+
+	// read in the sudoku board and the data
+	ldr  r5, =sudoku_write_temp_write
+
+	mov  r6, #0 	// i = 0
+  .Lsudoku_write_for_i:
+  	ldrb r1, [r4, r6]
+  	
+  	add  r1, r1, #'0'	// convert back to a character number
+  	strb r1, [r5]
+
+
+  	// check if there should be an endline or a space
+  	cmp  r6, #0
+  	beq  .Lsudoku_write_else	// if (i != 0)
+
+  	// set up the check
+  	mov  r2, r6	// store the value here
+  	add  r2, r2, #1
+  	mov  r1, r2 
+  	mov  r0, #9	// number to divide by
+  	udiv r1, r1, r0 // r = i / 9 - integer division
+  	mul  r1, r0, r1 // n = r * 9 - this will give us the nearest multiple of 9
+  	subs r1, r2, r1	// i - n = i % 9
+  	bne  .Lsudoku_write_else	// if (i % 9 == 0)
+  .Lsudoku_write_if:
+  	mov r1, #'\n'
+  	b   .Lsudoku_write_if_end
+  .Lsudoku_write_else:
+  	mov  r1, #' '		// push a space in after the character to be output
+  .Lsudoku_write_if_end:
+	str  r1, [r5, #1]	// store a ' ' or a '\n'
+
+  	// set up the call to my write function
+  	mov  r0, r5
+  	mov  r1, #2
+  	bl   write_string_to_file
+
+  	add r6, r6, #1
+  	cmp r6, #81
+  	bne .Lsudoku_write_for_i
+
+ 	bl  write_file_close
+	pop  {r4, r5, r6, r7, pc}
+
+
+
+/***************************
+* r0 - pointer to the filename to open
+***************************/
+write_file_open:
+	push {lr}
+	@mov r0, r0 // filename address is in r0
+	mov  r1, #(O_WRONLY | O_CREAT)
+	mov  r2, #(S_IRUSR | S_IWUSR)
+	mov  r7, #OPEN
+	svc  #0
+
+	ldr  r1, =write_file_handle
+	str  r0, [r1]
+	
+	cmp r0, #-1
+	bgt .Lwrite_open_end
+  .Lwrite_open_error:
+	mov  r0, #STDOUT
+	ldr  r1, =write_error_message
+	mov  r2, #ERROR_MESSAGE_SIZE
+	mov  r7, #WRITE
+	svc  #0
+  .Lwrite_open_end:
+	pop  {pc}
+
+
+/*************************************************
+*
+* note - the write_open must have been succesfully called
+* in order for this to work correctly. If it failed to open then
+* there is an error and it will not be able to write the file
+*
+* PARAMS: r0 - string to write to the file
+*         r1 - the number of characters to be written
+**************************************************/
+write_string_to_file:
+	push {r7, lr}
+
+	mov  r2, r1	// save the size of the array to pass in
+	mov  r1, r0	// save the c_string that was passed in
+	ldr  r0, =write_file_handle
+	ldr  r0, [r0]	// get the file handle from memory so that it will know where to write
+	mov  r7, #WRITE
+	svc  #0	
+
+	pop  {r7, pc}
+
+
+/***********************************************
+* PARAMS: NONE
+* // note - the file has to have been opened for this to work
+*************************************************/
+write_file_close:
+	push {lr}
+	ldr r0, =write_file_handle
+	ldr r0, [r0]
+	cmp r0, #-1
+	bne .Lwrite_close
+	cmp r0, #0
+	bne .Lwrite_close
+  .Lwrite_close_error:
+	mov  r0, #STDOUT
+	ldr  r1, =write_error_message_close
+	mov  r2, #ERROR_MESSAGE_CLOSE_SIZE
+	mov  r7, #WRITE	
+	b   .Lwrite_close_end
+  .Lwrite_close:
+	svc #0
+	cmp r0, #0
+	bne .Lwrite_close_error
+	ldr r1, =write_file_handle
+	str r0, [r1]
+  .Lwrite_close_end:
+	pop  {pc}
+
+
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    IFSTREAM      $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
+/****************************************
+* PARAMS: r0, filename
+*         r1, sudoku_board, array of 81 chars
+* RETURN: r0, the sudoku_board array filled with vals
+*         r1, the number of read values
+*****************************************/
+func_read_sudoku_board:
+	push {r4, r5, r6, lr}
+	mov  r5, r1	// stores the sudoku_array
+
+	// r0 already the filename 
+	bl  read_file_open
+
+	
+	ldr r6, =sudoku_board_temp_read
+
+	mov r4, #0 	// turn this into our i
+  .Lfor_i:
+  	mov r0, r6
+  	bl  read_file_to_space
+
+  	// if eof then jump out of the loop
+  	cmp r0, #0
+    	beq .Lend_for_i
+
+  	// store the file in the array
+  	ldrb r1, [r6]
+  	// TODO do the math here to turn this into a number
+  	// ex: sub r1, r1, #48 aka char - '0'
+  	sub  r1, r1, #'0'
+  	strb r1, [r5, r4]
+
+    	add r4, r4, #1
+    	b   .Lfor_i
+  .Lend_for_i:
+
+  	bl  read_file_close
+
+  	mov r0, r5
+  	mov r1, r4
+
+  	pop  {r4, r5, r6, pc}
+
+/***************************
+* r0 - pointer to the filename to open
+***************************/
+read_file_open:
+	push {lr}
+	@mov r0, r0 // filename address is in r0
+	mov  r1, #(O_RDONLY)
+	mov  r2, #(S_IRUSR | S_IWUSR)
+	mov  r7, #OPEN
+	svc  #0
+
+	ldr  r1, =fileHandle
+	str  r0, [r1]
+	
+	cmp r0, #-1
+	bgt .Lend
+  .Lerror:
+	mov  r0, #STDOUT
+	ldr  r1, =error_message
+	mov  r2, #ERROR_MESSAGE_SIZE
+	mov  r7, #WRITE
+	svc  #0
+  .Lend:
+	pop  {pc}
+	
+/************************
+* r0, where to store the character array this needs to be up to 256 chars
+* note: the file should already have been opened in order to work correctly
+*
+* returns in r0 - 0 if end of file, 1 otherwise
+**************************/
+read_file_to_space:
+	push { r4, r5, r6, lr }
+	ldr r6, =data 	// the location to store one character
+	mov r4, r0	// store the pointer to the data
+	ldr r5, =fileHandle	// where the fileHandle's stored
+	ldr r5, [r5]		// retrieve the filehandle
+
+  .Lloop_read_until_space:
+	mov r0, r5	// ensure the address of the file handle is correct
+	mov r1, r6	// ensure that the address of the char is there
+	mov r2, #1
+	mov r7, #READ
+	svc #0
+
+	// if it is the end of the file then jump
+	cmp r0, #0
+	beq .Lend_of_file
+	
+	ldrb r3, [r1]
+
+	// if (char == ' ' || char == '\n')
+	//    end loop
+	cmp  r3, #' '
+	beq  .Lnot_end_of_file
+	cmp  r3, #'\n'
+	beq  .Lnot_end_of_file
+
+	// store the character into the array provided by the user
+	strb r3, [r4]
+
+	// add 1 to the address provided by the user
+	add r4, r4, #1
+	b   .Lloop_read_until_space
+
+  .Lnot_end_of_file:
+	mov r0, #1
+	b  .Lend_read_space
+  .Lend_of_file:
+	mov r0, #0
+  .Lend_read_space:
+	mov r3, #0
+	strb r3, [r4]
+	pop  { r4, r5, r6, pc }
+	
+/***********************************************
+* PARAMS: NONE
+* // note - the file has to have been opened for this to work
+*************************************************/
+read_file_close:
+	push {lr}
+	ldr r0, =fileHandle
+	ldr r0, [r0]
+	cmp r0, #-1
+	bne .Lclose
+	cmp r0, #0
+	bne .Lclose
+  .Lclose_error:
+	mov  r0, #STDOUT
+	ldr  r1, =error_message_close
+	mov  r2, #ERROR_MESSAGE_CLOSE_SIZE
+	mov  r7, #WRITE	
+	b   .Lclose_end
+  .Lclose:
+	svc #0
+	cmp r0, #0
+	bne .Lclose_error
+	ldr r1, =fileHandle
+	str r0, [r1]
+  .Lclose_end:
+	pop  {pc}
+
 
 
 /*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$

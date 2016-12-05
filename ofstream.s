@@ -31,6 +31,10 @@ write_error_message:
 .balign 4
 write_error_message_close:
 	.asciz "ERROR: File could not be closed\n"
+// needed for the write_sudoku_board_to_work
+.balign
+sudoku_write_temp_write:
+	.skip 6
 
 
 // local variables to test this program
@@ -41,9 +45,7 @@ filename:
 sudoku_board:
 	.asciz "000123000123000000000000123000456000456000000000000456000789000789000000000000789"
 
-// needed for the write_sudoku_board_to_work
-temp_write:
-	.skip 6
+
 
 .text
 .global _start
@@ -79,7 +81,7 @@ write_sudoku_board_to_file:
 	bl  write_file_open
 
 	// read in the sudoku board and the data
-	ldr  r5, =temp_write
+	ldr  r5, =sudoku_write_temp_write
 
 	mov  r6, #0 	// i = 0
   .Lsudoku_write_for_i:
