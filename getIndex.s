@@ -47,13 +47,13 @@ _start:
         svc #0
 
 
-getIndex: //address of zero indexed numbers in r0
+getIndex: //row in r0, column in r1
           //returns indexNum in r0
         push {r4, r5, lr}
 
         //load data
-        ldrb r4, [r0]
-        ldrb r5, [r0, #2]
+        mov r4, r0
+        mov r5, r0
         //change to ints
         sub r4, r4, #48
         sub r5, r5, #48
