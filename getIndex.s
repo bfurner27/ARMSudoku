@@ -54,9 +54,6 @@ getIndex: //row in r0, column in r1
         //load data
         mov r4, r0
         mov r5, r1
-        //change to ints
-        sub r4, r4, #48
-        sub r5, r5, #48
 
         //calc index
         mov r0, #9
