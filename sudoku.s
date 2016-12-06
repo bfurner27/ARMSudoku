@@ -282,6 +282,8 @@ func_interact:
   	b   .Linteract_command_input_loop
   .Linteract_display_board: 
   	// TODO displays the board 
+  	mov   r0, r8
+	bl    func_displayBoard
   	b   .Linteract_command_input_loop
   .Linteract_quit_game: 
   	// TODO quit the game and save the board to a file
