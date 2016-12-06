@@ -31,6 +31,8 @@
 .set SUDOKU_BOARD_SIZE, 81
 .set ERROR_MESSAGE_SIZE, 33
 .set ERROR_MESSAGE_CLOSE_SIZE, 33
+.set SIZE_PROMPT_GET_COORDINATES, 30
+.set SIZE_ERROR_GET_COORDINATES, 28
 
 
 /*============================================
@@ -47,6 +49,39 @@ filename_write_addr:
 .balign 4
 sudoku_board_addr:
 	.word 0
+/*END****/
+
+
+/*START*********** Display Data ***************************/
+.balign 4
+header: .ascii "   A B C D E F G H I\n"
+.balign 4
+space: .ascii "  "
+.balign 4
+numSpace: .ascii "  "
+.balign 4
+num2Space: .ascii "   "
+.balign 4
+vertBar: .ascii "\b|"
+.balign 4
+horizBreak: .ascii "   -----+-----+-----\n"
+/*END****/
+
+/*START*********** dispPosValues ***************************/
+.balign 4
+newLine: .ascii "\n"
+.balign 4
+doubleBSpace: .ascii "\b\b "
+/*END****/
+
+
+/*START*********** ComputePosValues ***************************/
+.balign 4
+posValues: .skip 9 //possible values array
+.balign 4
+commaSpace: .ascii " , "
+.balign 4
+endl: .ascii "\n"
 /*END****/
 
 /*START***********ifstreamData*******************/
@@ -98,6 +133,15 @@ read_console_flag:
 .balign 4
 prompt_get_filename:
 	.asciz "Please enter the game filename: "
+.balign 4
+get_coordinate_temp_read:
+	.skip 256
+.balign 4
+prompt_get_coordinates:
+	.asciz "  enter coordinates (ex: a7): "	// size 30
+.balign 4
+error_get_coordinates:
+	.asciz "\tERROR: invalid coordinates\n" // size 28
 /*END****/
 
 
@@ -110,7 +154,7 @@ interact_user_command_prompt:
 	.asciz "> "	// size 2
 
 interact_invalid_input_message:
-	.asciz "Error: invalid input\n"	// size 21
+	.asciz "\tError: invalid input\n"	// size 22
 
 /*END*****/
 
@@ -163,6 +207,8 @@ _start:
 	bl    func_read_sudoku_board
 
 	// display sudoku board goes here
+	ldr   r0, [r5]
+	bl    func_displayBoard
 
 	// display commands goes here
 
@@ -178,9 +224,14 @@ _start:
 *
 ***************************************/
 func_interact:
-	push {r4, r5, r6, r7, lr}
+	push {r4, r5, r6, r7, r8, lr}
 	ldr  r4, =interact_user_command 	// store the command
 	ldr  r5, =interact_user_command_prompt	// store the prompt
+
+	// load the sudoku board address and board
+	ldr  r8, =sudoku_board_addr
+	ldr  r8, [r8]
+
   .Linteract_command_input_loop:
   	// prompt the user for the next command
   	mov  r0, #STDOUT
@@ -205,7 +256,7 @@ func_interact:
   	beq  .Linteract_display_option
   	cmp  r6, #'E'	// edit square
   	beq  .Linteract_edit_square
-  	cmp  r6, #'P'	// display possible values
+  	cmp  r6, #'S'	// display possible values
   	beq  .Linteract_display_pos_vals
   	cmp  r6, #'D' 	// display board
   	beq  .Linteract_display_board
@@ -219,9 +270,15 @@ func_interact:
   	b   .Linteract_command_input_loop
   .Linteract_edit_square: 
   	// TODO edit the square
+  	bl  func_get_coordinates	// returns r0 the coordinates as a number
   	b   .Linteract_command_input_loop
   .Linteract_display_pos_vals:
   	// TODO checks the possible values
+  	bl  func_get_coordinates	// returns r0 the coordinates as a number
+  	mov r1, r0
+  	mov r0, r8	// move the sudoku board into r0
+  	bl  func_calcPosValues
+  	bl  func_printPosValues
   	b   .Linteract_command_input_loop
   .Linteract_display_board: 
   	// TODO displays the board 
@@ -239,17 +296,17 @@ func_interact:
   	// deal with the default case
   	mov  r0, #STDOUT
   	ldr  r1, =interact_invalid_input_message
-  	mov  r2, #21
+  	mov  r2, #22
   	mov  r7, #WRITE
   	svc  #0
   	b   .Linteract_command_input_loop
 
   .Linteract_end:
-	pop  {r4, r5, r6, r7, pc}
+	pop  {r4, r5, r6, r7, r8, pc}
 
 /************************************
 * r0 - the character to be converted to upper
-* r0 - the upper character value, -1 if it is not a valid character for conversion
+* r0 - the upper character value, orignial if not a character
 
 * Flow of this program
 * if (char >= A && char <= Z)
@@ -288,10 +345,65 @@ $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*
 *              will return a number between 0-80 based on the index
 ***********************************/
 func_get_coordinates:
-	push {lr}
+	push {r4, r5, r7, lr}
 	// TODO write this function once it has been integrated better into the overall sudoku project
+  .Lget_coordinate_start_input_loop:
+  	
+  	// prompt the user for the - TODO call display once it is in place
+	mov  r0, #STDOUT
+	ldr  r1, =prompt_get_coordinates
+	mov  r2, #SIZE_PROMPT_GET_COORDINATES
+	mov  r7, #WRITE
+	svc  #0
 
-	pop  {lr}
+
+	ldr  r4, =get_coordinate_temp_read
+	mov  r0, r4
+	bl   read_console_input_to_space
+
+	cmp r0, #3
+	bne .Lget_coordinates_if_error_message
+
+	ldrb r0, [r4]	// load in the first error message
+
+	// get the first character and then check if it is in the valid range of A-I
+	bl   func_to_upper
+	cmp r0, #'A'
+	blt .Lget_coordinates_if_error_message
+	cmp r0, #'I'
+	bgt .Lget_coordinates_if_error_message
+
+	sub r0, r0, #'A'
+	mov r5, r0 	// change col item to r5 so it can call getIndex
+			// r5 is the column number converted from ascii
+
+	// load in the second character check for valid input 1-9
+	ldrb  r0, [r4, #1]
+	cmp   r0, #'1'
+	blt   .Lget_coordinates_if_error_message
+	cmp   r0, #'9'
+	bgt   .Lget_coordinates_if_error_message
+
+	sub  r0, r0, #'1'	// convert from ascii
+
+	mov  r1, r5
+	bl   getIndex
+
+
+	b   .Lget_coordinates_end
+
+  .Lget_coordinates_if_error_message:
+    	// prompt the user for the - TODO call display once it is in place
+	mov  r0, #STDOUT
+	ldr  r1, =error_get_coordinates
+	mov  r2, #SIZE_ERROR_GET_COORDINATES
+	mov  r7, #WRITE
+	svc  #0
+	b    .Lget_coordinate_start_input_loop
+
+  .Lget_coordinates_end:
+
+	pop  {r4, r5, r7, pc}
 
 /*************************
 * r0 - the address of the filename array location
@@ -388,6 +500,333 @@ read_console_fill_buffer:
 
 	pop  {r7, pc}
 
+
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$     CalcPosValues      $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
+func_calcPosValues: //take board address in r0, 81 based index in r1
+               //returns address of possible values in r0
+        push {r4-r9, lr}
+        mov r4, r0 //keep board address
+        mov r5, r1 //keep index value
+        ldr r6, =posValues //load possible values
+        mov r1, #1
+        mov r2, #0
+        //load posValues with 1 - 9
+.Load:  strb r1, [r6, r2]
+        add r2, r2, #1
+        add r1, r1, #1
+        cmp r2, #9
+        bne .Load
+
+        //check row
+        mov r0, r5 //get row start
+        mov r1, #9
+        bl mod
+        mov r1, r0
+        mov r0, r5
+        sub r7, r0, r1 //r7 now has beginning of row index
+        add r8, r7, #9 //r8 has compare value for loop
+.Lrow:
+        ldrb r0, [r4, r7]
+        mov r1, r6 //load posValues array for checkVal
+        bl checkVal
+        add r7, r7, #1 //go to next in row
+        cmp r7, r8
+        blt .Lrow
+
+        //check column
+        mov r0, r5 //place index into r0
+        b .LcolSubCheck
+.LcolSub:
+        sub r0, r0, #9
+.LcolSubCheck:
+        cmp r0, #9
+        bhs .LcolSub
+        //r0 has start of column index once loop is finished
+        mov r7, r0
+        mov r8, #0 //loop counter
+.Lcol:
+        ldrb r0, [r4, r7] //load board value
+        mov r1, r6 //load posValues
+        bl checkVal //check
+        add r7, r7, #9 //go to next item in column
+        add r8, r8, #1
+        cmp r8, #9
+        blt .Lcol
+
+        //check square (this is intense!)
+        mov r0, r5
+        mov r1, #3
+        bl mod
+        sub r0, r5, r0 //r0 now has the index that is in the correct column
+        mov r5, r0 //keep it safe, don't need original index anymore
+.LrowNumCheck: //go to correct row index
+        bl checkRowNum //see if num matches one of 9 correct locations
+        cmp r0, #1
+        bne .LrowNumSub //if it doesn't subtract 9 and trya again
+        b .LsqCheckCont //if it does continue
+.LrowNumSub:
+        sub r5, r5, #9
+        mov r0, r5
+        b .LrowNumCheck //this should only ever happen once or twice
+        //the correct index will be in r5
+.LsqCheckCont:
+//here we have an assembly interpretation of a nested loop
+        mov r8, #0//first loop counter
+        mov r9, #0//second loop counter
+.LoopAcross: //checks values across the row
+        ldrb r0, [r4, r5] //load board value
+        mov r1, r6 //posValues address
+        bl checkVal
+        add r5, r5, #1
+        add r8, r8, #1
+        cmp r8, #3
+        blt .LoopAcross
+.LoopDown:
+        add r9, r9, #1 //increment count
+        cmp r9, #3
+        beq .Ldone
+        add r5, r5, #7 //go to next row
+        b .LoopAcross ///go across next row
+.Ldone:
+        mov r0, r6 //move address of posValues to r0
+
+        pop {r4-r9, lr} //return
+        bx lr
+
+checkVal: //takes value in r0, address of array in r1, no return
+        push {lr}
+        //check if zero
+        cmp r0, #0
+        beq .Lreturn
+
+        sub r0, r0, #1 //change to zero index
+        mov r2, #0
+        strb r2, [r1, r0] //place zero into the proper spot
+
+.Lreturn:
+        pop {lr}
+        bx lr
+
+
+checkRowNum: //takes rowNum in r0, returns 0 or 1 in r0
+        push {lr}
+
+        cmp r0, #0
+        beq .Ltrue
+        cmp r0, #3
+        beq .Ltrue
+        cmp r0, #6
+        beq .Ltrue
+        cmp r0, #27
+        beq .Ltrue
+        cmp r0, #30
+        beq .Ltrue
+        cmp r0, #33
+        beq .Ltrue
+        cmp r0, #54
+        beq .Ltrue
+        cmp r0, #54
+        beq .Ltrue
+        cmp r0, #57
+        beq .Ltrue
+        cmp r0, #60
+        beq .Ltrue
+        b .Lfalse
+
+.Ltrue:
+        mov r0, #1
+        b .Lexit
+.Lfalse:
+        mov r0, #0
+
+.Lexit: pop {lr}
+        bx lr
+
+
+func_printPosValues: //takes address of posValues in r0, no return
+        push {r4, lr}
+
+        mov r4, r0 //keep address safe
+        mov r2, #0 //loop counter
+        ldr r3, =commaSpace //for display
+.Ldis:
+        ldrb r1, [r4, r2] //load possible value
+        cmp r1, #0  //see if it is zero change to 0 ofr final program
+        beq .LdisCont //if yes skip it
+                      //if not display it
+        add r1, r1, #48 //convert to ascii
+        strb r1, [r3]
+        mov r0, r3
+        mov r1, #3
+        push {r2, r3}
+        bl display
+        pop {r2, r3}
+.LdisCont:
+        add r2, r2, #1 //increment counter
+        cmp r2, #9
+        blt .Ldis //show all possible values
+
+	ldr r0, =doubleBSpace //get rid of extra ", "
+	mov r1, #3
+	bl display
+
+	ldr r0, =newLine //put out a new line
+	mov r1, #1
+	bl display
+
+        pop {r4, lr}
+        bx lr
+
+
+
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$     DisplayBoard       $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
+func_displayBoard: //takes address of board in r0, no return
+        push {r4 - r11, lr}
+        //set up
+        mov r4, r0 //keep address safe in r4
+        mov r5, #0 //loopCount
+        mov r6, #0 //loopCount + 1
+        mov r7, #49 //lineCount, in ascii
+        //keep commonly used addresses handy
+        ldr r8, =num2Space
+        ldr r9, =numSpace
+        ldr r10, =vertBar
+        ldr r11, =space
+        //display header
+        ldr r0, =header
+        mov r1, #21
+        bl display
+        //begin first line
+        mov r0, r8
+        strb r7, [r0] //lineCount into num2Space
+        mov r1, #3
+        bl display //show the "1  "
+
+        //start loop
+.Loop:  ldrb r2, [r4, r5] //load byte from board
+        add r2, r2, #'0' //change to ascii
+        cmp r2, #48 //see if num is a 0
+        bhi .Lnum //if not skip this
+        mov r0, r11 //if is display a space
+        mov r1, #2
+        bl display
+        b .LANum //don't display twice
+.Lnum:  mov r0, r9 //if not zero put out "x "
+        strb r2, [r0]
+        mov r1, #2
+        bl display
+.LANum: add r6, r5, #1 //get loopCount + 1
+        mov r0, r6 //prep for mod
+        mov r1, #3
+        bl mod //get mod
+        cmp r0, #0
+        beq .LVBar //if loop count + 1 % 3 == 0 display "| "
+        b .LCont //if not continue
+.LVBar: mov r0, r6 //prep for second mod
+        mov r1, #9
+        bl mod //if loopCount + 1 % 9 == 0, no Vbar
+        cmp r0, #0
+        beq .LNVBar //skip VBar at end of line
+        mov r0, r10 ///load vertBar
+        mov r1, #2
+        bl display //show it
+        b .LCont //continue normally
+.LNVBar:mov r0, r6 //prep for mod
+        mov r1, #9
+        bl mod
+        cmp r0, #0 //if loopCount + 1 % 9 == 0
+        bhi .LCont //if not continue normally
+        mov r1, #32 //for a space
+        mov r0, r9 //mov numSpace into r0
+        strb r1, [r0] //load space
+        mov r1, #10
+        strb r1, [r0, #1] //load new line
+        mov r1, #2
+        bl display //put out " \n"
+        mov r0, r9 //put a space back in
+        mov r1, #32
+        strb r1, [r0, #1] //now numSpace is "  "
+        add r7, r7, #1 //increment lineCount
+        cmp r7, #52 //see if horizBreak is need
+        beq .LHbreak //need horizBreak after 3 and 6
+        cmp r7, #55 //52 and 55 in ascii
+        beq .LHbreak
+        b .LNHBreak
+.LHbreak: //display a horizontal break if needed
+        ldr r0, =horizBreak
+        mov r1, #21
+        bl display
+.LNHBreak: //if no horizBreak, but a new line occurred
+        mov r0, r8 //load num2Space
+        cmp r7, #':'
+        beq .LCont
+        strb r7, [r0] //store line count in
+        mov r1, #3
+        bl display //show the line number
+.LCont: add r5, r5, #1 //increment loopCount
+        cmp r5, #81 //check if done
+        blt .Loop //if not loop again
+        pop {r4 - r11, lr} //when loop is done
+        bx lr //exit function
+
+
+
+display: //address in r0, numBytes in r1
+        push {r7, lr}
+
+        mov r2, r1 //place numBytes
+        mov r1, r0 //place address
+        //set up display
+        mov r0, #STDOUT
+        mov r7, #WRITE
+        svc #0 //display
+
+        pop {r7, lr}
+        bx lr
+
+mod: //num in r0, modder in r1. i.e. r0 % r1
+        push {lr}
+
+        cmp r0, r1
+        blt .LDone
+
+.LMod:  sub r0, r0, r1
+        cmp r0, r1
+        bhs .LMod
+
+.LDone:
+        pop {lr}
+        bx lr
+
+
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$    GETINDEX      $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
+getIndex: //row in r0, column in r1
+          //returns indexNum in r0
+        push {r4, r5, lr}
+
+        //load data
+        mov r4, r0
+        mov r5, r1
+
+        //calc index
+        mov r0, #9
+        mul r0, r4, r0
+        add r0, r0, r5
+
+        pop {r4, r5, lr}
+        bx lr
 
 
 /*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
