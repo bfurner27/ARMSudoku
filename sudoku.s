@@ -74,6 +74,13 @@ newLine: .ascii "\n"
 doubleBSpace: .ascii "\b\b "
 /*END****/
 
+/*START*********** dispInstructions ***************************/
+instructions: .ascii "Options:\n"
+    .ascii "   D  Display the board\n"
+    .ascii "   E  Edit one square\n"
+    .ascii "   S  Show the possible values for a square\n"
+    .ascii "   Q  Save and Quit\n"
+/*END****/
 
 /*START*********** ComputePosValues ***************************/
 .balign 4
@@ -82,6 +89,21 @@ posValues: .skip 9 //possible values array
 commaSpace: .ascii " , "
 .balign 4
 endl: .ascii "\n"
+/*END****/
+
+/*START*********** EditSquare ***************************/
+.balign 4
+badVal: .ascii "Value is invalid\n"
+.balign 4
+errVal: .ascii "Value is out of range (1 - 9)\n"
+.balign 4
+errFull: .ascii "Location is occupied\n"
+.balign 4
+prompt: .ascii "Enter coordinate (row col): "
+.balign 4
+prompt2: .ascii "Enter value: "
+.balign 4
+read: .skip 256
 /*END****/
 
 /*START***********ifstreamData*******************/
@@ -151,10 +173,10 @@ interact_user_command:
 	.skip 256 // the command will be stored in this variable
 .balign 4
 interact_user_command_prompt:
-	.asciz "> "	// size 2
+	.asciz "\n> "	// size 3
 
 interact_invalid_input_message:
-	.asciz "\tError: invalid input\n"	// size 22
+	.asciz "  Error: invalid input\n"	// size 23
 
 /*END*****/
 
@@ -206,11 +228,15 @@ _start:
 	mov   r1, r7 	// pass in the sudoku board
 	bl    func_read_sudoku_board
 
+        // display commands goes here
+        bl    func_displayInstructions
+        ldr  r0, =endl
+        mov  r1, #3
+        bl   display
+
 	// display sudoku board goes here
 	ldr   r0, [r5]
 	bl    func_displayBoard
-
-	// display commands goes here
 
 	// this will start the interact process
 	bl    func_interact
@@ -234,11 +260,10 @@ func_interact:
 
   .Linteract_command_input_loop:
   	// prompt the user for the next command
-  	mov  r0, #STDOUT
-  	mov  r1, r5
-  	mov  r2, #2
-  	mov  r7, #WRITE
-  	svc  #0
+  	mov  r0, r5
+  	mov  r1, #3
+        bl   display
+
 
   	// call fin >> command
   	mov  r0, r4	// store the command
@@ -266,14 +291,15 @@ func_interact:
 
 
   .Linteract_display_option: 
-  	// TODO displays the options
+        bl  func_displayInstructions
   	b   .Linteract_command_input_loop
   .Linteract_edit_square: 
-  	// TODO edit the square
   	bl  func_get_coordinates	// returns r0 the coordinates as a number
+    mov r1, r0
+    mov r0, r8
+    bl  func_editSquare
   	b   .Linteract_command_input_loop
   .Linteract_display_pos_vals:
-  	// TODO checks the possible values
   	bl  func_get_coordinates	// returns r0 the coordinates as a number
   	mov r1, r0
   	mov r0, r8	// move the sudoku board into r0
@@ -281,12 +307,10 @@ func_interact:
   	bl  func_printPosValues
   	b   .Linteract_command_input_loop
   .Linteract_display_board: 
-  	// TODO displays the board 
   	mov   r0, r8
-	bl    func_displayBoard
+	  bl    func_displayBoard
   	b   .Linteract_command_input_loop
   .Linteract_quit_game: 
-  	// TODO quit the game and save the board to a file
   	ldr r0, =filename_write_addr
   	ldr r0, [r0]
   	bl  func_get_filename	// r0 will have the address of the string
@@ -295,16 +319,24 @@ func_interact:
   	bl  func_write_sudoku_board_to_file
   	b  .Linteract_end
   .Linteract_default: 
-  	// deal with the default case
-  	mov  r0, #STDOUT
-  	ldr  r1, =interact_invalid_input_message
-  	mov  r2, #22
-  	mov  r7, #WRITE
-  	svc  #0
+  	ldr  r0, =interact_invalid_input_message
+  	mov  r1, #23
+        bl   display
   	b   .Linteract_command_input_loop
 
   .Linteract_end:
 	pop  {r4, r5, r6, r7, r8, pc}
+
+
+/**********************************
+*
+***********************************/
+func_displayInstructions:
+        push {lr}
+        ldr r0, =instructions
+        mov r1, #119
+        bl display
+        pop   {pc}
 
 /************************************
 * r0 - the character to be converted to upper
@@ -352,11 +384,9 @@ func_get_coordinates:
   .Lget_coordinate_start_input_loop:
   	
   	// prompt the user for the - TODO call display once it is in place
-	mov  r0, #STDOUT
-	ldr  r1, =prompt_get_coordinates
-	mov  r2, #SIZE_PROMPT_GET_COORDINATES
-	mov  r7, #WRITE
-	svc  #0
+	ldr  r0, =prompt_get_coordinates
+	mov  r1, #SIZE_PROMPT_GET_COORDINATES
+        bl   display
 
 
 	ldr  r4, =get_coordinate_temp_read
@@ -501,6 +531,87 @@ read_console_fill_buffer:
 	svc  #0
 
 	pop  {r7, pc}
+
+
+
+
+
+/*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$     EditSquare         $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$*/
+func_editSquare: //board in r0, 81 index in r1
+        push {r4-r6, lr}
+
+        //mov values for safe keeping
+        mov r4, r0
+        mov r5, r1
+        mov r6, r2
+
+        ldr r0, =space
+        mov r1, #2
+        bl  display
+
+        //check if square is filled
+        ldrb r0, [r4, r5]
+        cmp r0, #0
+        bne .LerrorFull //if filled don't edit it
+
+        //show prompt
+        ldr r0, =prompt2
+        mov r1, #13
+        bl display
+        //get user input
+        ldr r0, =read
+        bl read_console_input_to_space //this will have to be modified to use Ben's input code
+        ldr r0, =read
+        ldrb r0, [r0]
+        sub r0, r0, #48 //change to int value
+        mov r6, r0 //keep it safe
+
+        //check digit range
+        cmp r6, #1
+        blt .LerrorVal
+        cmp r6, #9
+        bhs .LerrorVal
+
+        //call calcPosValues to find valid options
+        mov r0, r4
+        mov r1, r5
+        bl func_calcPosValues
+
+        mov r2, #0 //loop counter
+.LcompLoop:
+        ldrb r1, [r0, r2]
+        cmp r6, r1
+        beq .LgoodVal
+        add r2, r2, #1
+        cmp r2, #9
+        blt .LcompLoop
+
+        //if here, that means invalid value
+        ldr r0, =badVal
+        mov r1, #17
+        bl display
+        b .LexitEdit
+.LgoodVal: //if here the value entered was good
+        strb r6, [r4, r5] //place the value into the board
+        b .LexitEdit
+
+.LerrorVal:
+        ldr r0, =errVal
+        mov r1, #30
+        bl display
+        b .LexitEdit
+.LerrorFull:
+        ldr r0, =errFull
+        mov r1, #21
+        bl display
+
+.LexitEdit:
+        pop {r4-r6, lr}
+        bx lr
 
 
 /*$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
@@ -652,9 +763,13 @@ checkRowNum: //takes rowNum in r0, returns 0 or 1 in r0
 func_printPosValues: //takes address of posValues in r0, no return
         push {r4, lr}
 
+
         mov r4, r0 //keep address safe
         mov r2, #0 //loop counter
         ldr r3, =commaSpace //for display
+        ldr r0, =space
+        mov r1, #2
+        bl  display
 .Ldis:
         ldrb r1, [r4, r2] //load possible value
         cmp r1, #0  //see if it is zero change to 0 ofr final program
