@@ -18,7 +18,8 @@ instructions:	.ascii "Options:\n"
 		.ascii "   D  Display the board\n"
 		.ascii "   E  Edit one square\n"
 		.ascii "   S  Show the possible values for a square\n"
-		.ascii "   Q  Save and Quit\n\n"
+		.ascii "   Q  Save and Quit\n"
+		.ascii "   ?  Display Instructions\n\n"
 .text
 .global _start
 _start:

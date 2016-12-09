@@ -76,6 +76,7 @@ doubleBSpace: .ascii "\b\b "
 
 /*START*********** dispInstructions ***************************/
 instructions: .ascii "Options:\n"
+    .ascii "   ?  Display Instructions\n"
     .ascii "   D  Display the board\n"
     .ascii "   E  Edit one square\n"
     .ascii "   S  Show the possible values for a square\n"
@@ -334,7 +335,7 @@ func_interact:
 func_displayInstructions:
         push {lr}
         ldr r0, =instructions
-        mov r1, #119
+        mov r1, #146
         bl display
         pop   {pc}
 
